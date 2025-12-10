@@ -1,7 +1,7 @@
 # Embracing the Blessing of Smoothness in Optimal Transport Map Estimation Between General Distributions
 
 ## Overview
-This repository contains code to reproduce results from the paper **“Embracing the Blessing of Smoothness in Optimal Transport Map Estimation Between General Distributions”** by Yizhe Ding, Runze Li, and Lingzhou Xue (The Pennsylvania State University).
+This repository contains code to reproduce results from the paper **“Embracing the Blessing of Smoothness in Optimal Transport Map Estimation Between General Distributions”** by Yizhe Ding, Runze Li, and Lingzhou Xue (The Pennsylvania State University). [(arXiv link)](https://arxiv.org/pdf/2412.08064)
 
 ---
 
