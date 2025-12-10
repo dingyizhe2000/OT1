@@ -41,8 +41,11 @@ Train models with different configurations for simulations and real data.
 - `--act`: The activation function of ICNN, which can be one of `"relu"`, `"leaky_relu"`, or `"softplus"`.
 
 **Example**
+
+```
 cd simulation_code
 python train.py --d 5 --n 1000 --measure normal --transform CDF --act relu
+```
 
 ### Reproduce real data (4i dataset) experiment
 
@@ -53,5 +56,7 @@ python train.py --d 5 --n 1000 --measure normal --transform CDF --act relu
 - `--act`: The activation function of ICNN, which can be one of `"relu"`, `"leaky_relu"`, or `"softplus"`.
 
 **Example**
+```
 cd realdata_code
 python train.py --act softplus
+```
