@@ -1,7 +1,7 @@
 # The Blessing of Smoothness in Optimal Transport Estimation with Heavy Tails and Non-Convex Supports
 
 ## Overview
-This repository contains code to reproduce results from the paper **“The Blessing of Smoothness in Optimal Transport Estimation with Heavy Tails and Non-Convex Supports”** by Yizhe Ding, Runze Li, and Lingzhou Xue (The Pennsylvania State University). [(arXiv link)](https://arxiv.org/pdf/2412.08064)
+This repository contains code to reproduce results from the paper **“The Blessing of Smoothness in Optimal Transport Estimation with Heavy Tails and Non-Convex Supports”** by Yizhe Ding, Runze Li, and Lingzhou Xue (The Pennsylvania State University).
 
 ---
 
