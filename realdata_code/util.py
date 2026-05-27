@@ -3,7 +3,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Yizhe Ding
 
-import os, re, torch
+import json
+import os
+import random
+import re
+import subprocess
+from datetime import datetime, timezone
+
+import torch
 import numpy as np
 
 from sklearn.metrics.pairwise import rbf_kernel
@@ -13,12 +20,67 @@ from scipy.stats.mstats import ks_2samp
 _ITER_RE = re.compile(r"_iteration(\d+)\.pt$")
 
 
+DEFAULT_REALDATA_SEED = 20260527
+
+
+def set_random_seed(seed: int, deterministic: bool = False):
+    """Seed Python, NumPy, PyTorch CPU, and PyTorch CUDA RNGs."""
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    return seed
+
+
+def get_code_version(repo_dir=None) -> str:
+    """Return the current git commit hash when available."""
+    repo_dir = repo_dir or os.getcwd()
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_dir,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip()
+    except Exception:
+        return "unknown"
+
+
+def write_metadata_json(save_path: str, metadata: dict, filename: str = "metadata.json") -> str:
+    """Write run metadata next to the checkpoint/result files."""
+    os.makedirs(save_path, exist_ok=True)
+    path = os.path.join(save_path, filename)
+    payload = dict(metadata)
+    payload.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
+
+
+def _checkpoint_dir(drug_name: str, save_path: str) -> str:
+    """Resolve the directory that directly contains iteration checkpoints."""
+    if not drug_name:
+        return save_path
+    norm = os.path.normpath(save_path)
+    if os.path.basename(norm) == drug_name:
+        return save_path
+    return os.path.join(save_path, drug_name)
+
+
 def _list_ckpts_for_act(drug_name: str, act: str, save_path: str):
     """
     Return (paths, iters) sorted by iteration for checkpoints:
-        save_path/drug_name/{act}_iterationXXXX.pt
+        checkpoint_dir/{act}_iterationXXXX.pt
     """
-    drug_dir = save_path
+    drug_dir = _checkpoint_dir(drug_name, save_path)
     if not os.path.isdir(drug_dir):
         return [], []
 
@@ -45,11 +107,11 @@ def _list_ckpts_for_act(drug_name: str, act: str, save_path: str):
 
 def _find_latest_iteration_ckpt(drug_name: str, act: str, save_path: str):
     """
-    Scan save_path/drug_name for files named like
+    Scan the resolved checkpoint directory for files named like
         '{act}_iterationXXXX.pt'
     and return (path, iteration) for the largest XXXX. If none, return (None, 0).
     """
-    drug_dir = os.path.join(save_path, drug_name)
+    drug_dir = _checkpoint_dir(drug_name, save_path)
     if not os.path.isdir(drug_dir):
         return None, 0
 
@@ -128,7 +190,7 @@ def save_checkpoint(step, f_model, g_model, f_optim, g_optim, drug_name, save_pa
                     running_fl, nb):  # <<< changed signature
     act = f_model.activation_name
 
-    drug_dir = os.path.join(save_path, drug_name)
+    drug_dir = _checkpoint_dir(drug_name, save_path)
     os.makedirs(drug_dir, exist_ok=True)   # <<< ensure dir exists
 
     ckpt_path = os.path.join(drug_dir, f"{act}_iteration{step}.pt")
@@ -157,15 +219,10 @@ def compute_mmd(x: torch.Tensor,
                 y: torch.Tensor,
                 gammas=None) -> float:
     """
-    Unbiased multi-scale MMD^2 with RBF kernels.
+    Multi-scale MMD^2 with RBF kernels, using full kernel means.
 
-    For each gamma, uses the unbiased estimator
-
-        MMD^2_u =
-            1/(n(n-1)) * sum_{i != j} k(x_i, x_j)
-          + 1/(m(m-1)) * sum_{i != j} k(y_i, y_j)
-          - 2/(nm)    * sum_{i,j}    k(x_i, y_j)
-
+    For each gamma, this computes:
+        mean Kxx + mean Kyy - 2 mean Kxy
     and then averages over all gammas.
     Returns a scalar float (np.nan if everything fails).
     """
@@ -233,4 +290,55 @@ def compute_ks_distance(x, y) -> float:
     vals = []
     for j in range(d):
         vals.append(ks_2samp(x[:, j], y[:, j]).statistic)
+    return float(np.mean(vals))
+
+
+def _wasserstein_1d(u, v):
+    u = np.asarray(u, dtype=float)
+    v = np.asarray(v, dtype=float)
+    n, m = len(u), len(v)
+    if n == 0 and m == 0:
+        return 0.0
+    if n == 0:
+        return float(np.mean(np.abs(v)))
+    if m == 0:
+        return float(np.mean(np.abs(u)))
+
+    try:
+        from scipy.stats import wasserstein_distance
+        return float(wasserstein_distance(u, v))
+    except Exception:
+        qs = np.linspace(0.0, 1.0, 512)
+        uq = np.quantile(u, qs, method="linear")
+        vq = np.quantile(v, qs, method="linear")
+        return float(np.mean(np.abs(uq - vq)))
+
+
+def sliced_wasserstein_distance(x, y, n_proj=256, seed=DEFAULT_REALDATA_SEED) -> float:
+    """
+    Mean 1D W1 over seeded random projections.
+    x, y: [N, d] tensors or arrays.
+    """
+    if torch.is_tensor(x):
+        x_np = x.detach().cpu().numpy()
+    else:
+        x_np = np.asarray(x, dtype=float)
+    if torch.is_tensor(y):
+        y_np = y.detach().cpu().numpy()
+    else:
+        y_np = np.asarray(y, dtype=float)
+
+    assert x_np.shape[1] == y_np.shape[1]
+    d = x_np.shape[1]
+
+    rng = np.random.default_rng(seed)
+    dirs = rng.normal(size=(d, n_proj))
+    dirs /= np.linalg.norm(dirs, axis=0, keepdims=True) + 1e-12
+
+    x_proj = x_np @ dirs
+    y_proj = y_np @ dirs
+
+    vals = []
+    for j in range(n_proj):
+        vals.append(_wasserstein_1d(x_proj[:, j], y_proj[:, j]))
     return float(np.mean(vals))

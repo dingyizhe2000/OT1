@@ -7,7 +7,36 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 import numpy as np
+import scanpy as sc
 from sklearn.model_selection import train_test_split
+
+from util import DEFAULT_REALDATA_SEED
+
+
+def load_train_test_loaders(
+    drug_name,
+    device,
+    batch_train_size,
+    batch_val_test_size,
+    val_fraction,
+    test_fraction,
+    random_seed=DEFAULT_REALDATA_SEED,
+    data_path="../4i/8h.h5ad",
+    feature_names_txt="../4i/features.txt",
+):
+    data4i = sc.read_h5ad(data_path)
+    drug_to_matrix = split_by_drug_to_numpy(data4i, feature_names_txt)
+
+    return construct_pair_loaders(
+        drug_to_matrix,
+        drug_name=drug_name,
+        batch_train_size=batch_train_size,
+        batch_val_test_size=batch_val_test_size,
+        device=device,
+        val_fraction=val_fraction,
+        test_fraction=test_fraction,
+        random_seed=random_seed,
+    )
 
 
 def split_by_drug_to_numpy(adata, feature_names_txt):
@@ -85,6 +114,7 @@ def construct_pair_loaders(
     device="cpu",
     val_fraction=0.1,       # desired global ratio
     test_fraction=0.2,      # desired global ratio
+    random_seed=DEFAULT_REALDATA_SEED,
 ):
     """
     Creates matched (control, drug) datasets and returns infinite train loaders
@@ -103,11 +133,11 @@ def construct_pair_loaders(
     # 1) First split: test set (20%)
     # -------------------------------
     x_train, x_test = train_test_split(
-        x, test_size=test_fraction, shuffle=True
+        x, test_size=test_fraction, shuffle=True, random_state=random_seed
     )
 
     y_train, y_test = train_test_split(
-        y, test_size=test_fraction, shuffle=True
+        y, test_size=test_fraction, shuffle=True, random_state=random_seed
     )
 
     # ---------------------------------------------
@@ -123,12 +153,14 @@ def construct_pair_loaders(
     x_train, x_val = train_test_split(
         x_train,
         test_size=val_fraction_adjusted,   # MINIMAL CHANGE
-        shuffle=True
+        shuffle=True,
+        random_state=random_seed
     )
     y_train, y_val = train_test_split(
         y_train,
         test_size=val_fraction_adjusted,   # MINIMAL CHANGE
-        shuffle=True
+        shuffle=True,
+        random_state=random_seed
     )
 
     # --- Wrap tensors ---
@@ -141,8 +173,17 @@ def construct_pair_loaders(
     y_test  = CustomDataset(y_test,  device)
 
     # --- Loaders ---
-    x_train_loader = DataLoader(x_train, batch_size=batch_train_size, shuffle=True)
-    y_train_loader = DataLoader(y_train, batch_size=batch_train_size, shuffle=True)
+    x_generator = torch.Generator()
+    y_generator = torch.Generator()
+    x_generator.manual_seed(int(random_seed))
+    y_generator.manual_seed(int(random_seed) + 1)
+
+    x_train_loader = DataLoader(
+        x_train, batch_size=batch_train_size, shuffle=True, generator=x_generator
+    )
+    y_train_loader = DataLoader(
+        y_train, batch_size=batch_train_size, shuffle=True, generator=y_generator
+    )
 
     x_val_loader   = DataLoader(x_val,   batch_size=batch_val_test_size, shuffle=False)
     y_val_loader   = DataLoader(y_val,   batch_size=batch_val_test_size, shuffle=False)

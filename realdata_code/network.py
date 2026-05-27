@@ -36,8 +36,20 @@ class ReQUModule(nn.Module):
     def forward(self, x):
         return F.relu(x) ** 2
 
+
+class CenteredSoftplus(nn.Module):
+    """Softplus(x) - Softplus(0)."""
+    def __init__(self):
+        super().__init__()
+        self.softplus = nn.Softplus()
+        self.c0 = float(self.softplus(torch.zeros(1)))
+
+    def forward(self, x):
+        return self.softplus(x) - self.c0
+
+
 class ScaledSoftplus(nn.Module):
-    def __init__(self, scale: float = 1.20):
+    def __init__(self, scale: float = 1.05):
         super().__init__()
         self.softplus = nn.Softplus()
         self.c0 = float(self.softplus(torch.zeros(1)))
@@ -52,10 +64,28 @@ def make_activation_module(name: str) -> nn.Module:
         return nn.ReLU()
     if name in ("leaky_relu", "lrelu"):
         # default slope 0.2 to match CellOT's LeakyReLU(0.2)
+        return LeakyReLUModule(negative_slope=0.2)
+    if name in ("requ", "relu2", "relu_sq", "relu_square"):
         return ReQUModule()
-    if name in ("softplus_scaled", "softplus"):
-        return ScaledSoftplus()
-    raise ValueError("Unsupported activation.")
+    if name == "elu":
+        return nn.ELU()
+    if name == "softplus":
+        return nn.Softplus()
+    if name == "softplus_centered":
+        return CenteredSoftplus()
+    if name == "softplus_scaled":
+        return ScaledSoftplus(scale=1.05)
+    if name == "softplus_scaled_2":
+        return ScaledSoftplus(scale=1.10)
+    if name == "softplus_scaled_3":
+        return ScaledSoftplus(scale=1.15)
+    if name == "softplus_scaled_4":
+        return ScaledSoftplus(scale=1.20)
+    raise ValueError(
+        "Unsupported activation. Use: relu, leaky_relu, requ, elu, "
+        "softplus, softplus_centered, softplus_scaled, softplus_scaled_2, "
+        "softplus_scaled_3, softplus_scaled_4."
+    )
 
 
 # -------------------------------------------------

@@ -10,7 +10,16 @@ from tqdm import tqdm
 
 from network import load_network_optim
 from data_loader import construct_pair_loaders, split_by_drug_to_numpy
-from util import load_latest_checkpoint, save_checkpoint, compute_mmd, compute_ks_distance
+from util import (
+    DEFAULT_REALDATA_SEED,
+    compute_ks_distance,
+    compute_mmd,
+    get_code_version,
+    load_latest_checkpoint,
+    save_checkpoint,
+    set_random_seed,
+    write_metadata_json,
+)
 
 
 TQDM_KW = dict(dynamic_ncols=True, leave=False, mininterval=0.2)
@@ -156,13 +165,13 @@ def evaluate_checkpoints_on_val(
     """
     (1) Load all checkpoints for this (drug_name, act).
     (2) For each checkpoint, compute MMD, KS, SWD between:
-            x_val  (control)  and  T_g(y_val)  (transported treated)
-        where T_g is given by g_model.transport.
+            T_f(x_val)  (transported control)  and  y_val  (treated)
+        where T_f is given by f_model.transport.
     (3) Store the resulting 3 curves + iterations as a .npz on disk.
 
     Assumes checkpoints are saved as:
-        save_path/drug_name/{act}_iterationXXXX.pt
-    where ckpt["g_model"] is the trained ICNN g.
+        save_path/{act}_iterationXXXX.pt
+    where ckpt["f_model"] is the trained forward ICNN potential f.
     """
     device = torch.device(device)
 
@@ -263,7 +272,18 @@ if __name__=="__main__":
     torch.set_num_threads(2)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--act', type=str, help='activation of ICNN network, relu, leaky_relu, requ, softplus.')
+    parser.add_argument('--act', type=str, required=True,
+                        help='activation of ICNN network, e.g. relu, leaky_relu, requ, softplus.')
+    parser.add_argument('--seed', type=int, default=DEFAULT_REALDATA_SEED,
+                        help='base random seed; per-drug seed is seed + drug index.')
+    parser.add_argument('--data-path', type=str, default="../4i/8h.h5ad",
+                        help='path to the 4i .h5ad file.')
+    parser.add_argument('--feature-file', type=str, default="../4i/features.txt",
+                        help='path to the feature-name text file.')
+    parser.add_argument('--save-path', type=str, default="../4idata_results",
+                        help='root directory for real-data checkpoints and metrics.')
+    parser.add_argument('--device', type=str, default="cpu",
+                        help='torch device, e.g. cpu or cuda.')
     args, unknown = parser.parse_known_args()
 
     # Hyperparameters
@@ -307,7 +327,7 @@ if __name__=="__main__":
         "vindesine",
     ]
 
-    device = "cpu"
+    device = args.device
 
     d_in  = 48
     width = 64
@@ -325,24 +345,27 @@ if __name__=="__main__":
 
     g_steps_per_batch = 10
     n_iteration = 100000
+    save_freq = 100
 
-    save_path = "../4idata_results"
+    save_path = args.save_path
 
 
     try:
-        data4i = sc.read_h5ad("../4i/8h.h5ad")
+        data4i = sc.read_h5ad(args.data_path)
     except FileNotFoundError as e:
         print(e)
 
     
-    feature_names_txt = "../4i/features.txt"
+    feature_names_txt = args.feature_file
     drug_to_matrix = split_by_drug_to_numpy(
         data4i,
         feature_names_txt
     )
 
 
-    for drug_name in drug_names:
+    for job_index, drug_name in enumerate(drug_names):
+        job_seed = int(args.seed) + job_index
+        set_random_seed(job_seed)
 
         # Build loaders
         x_train_iter, y_train_iter, x_val_loader, y_val_loader, x_test_loader, y_test_loader = construct_pair_loaders(
@@ -353,6 +376,7 @@ if __name__=="__main__":
             device=device,
             val_fraction=val_fraction,       # desired global ratio
             test_fraction=test_fraction,      # desired global ratio
+            random_seed=job_seed,
         )
 
         f_model, g_model, f_optim, g_optim = load_network_optim(
@@ -368,6 +392,36 @@ if __name__=="__main__":
 
         os.makedirs(save_path, exist_ok=True)
         save_path_drug = os.path.join(save_path, f"{drug_name}")
+        run_id = f"{drug_name}_{act}_seed{job_seed}"
+        metadata = {
+            "run_id": run_id,
+            "job_index": job_index,
+            "base_seed": int(args.seed),
+            "seed_derivation": "job_seed = base_seed + job_index",
+            "drug_name": drug_name,
+            "activation": act,
+            "seed": job_seed,
+            "split_seed": job_seed,
+            "torch_seed": job_seed,
+            "d_in": d_in,
+            "width": width,
+            "depth": depth,
+            "lr": lr,
+            "beta1": beta1,
+            "beta2": beta2,
+            "batch_train_size": batch_train_size,
+            "batch_val_test_size": batch_val_test_size,
+            "val_fraction": val_fraction,
+            "test_fraction": test_fraction,
+            "g_steps_per_batch": g_steps_per_batch,
+            "n_iteration": n_iteration,
+            "save_freq": save_freq,
+            "device": device,
+            "data_path": args.data_path,
+            "feature_file": feature_names_txt,
+            "code_version": get_code_version(repo_dir=os.path.dirname(os.path.dirname(__file__))),
+        }
+        write_metadata_json(save_path_drug, metadata)
         
 
         avg_fl = train_model_minmax_icnn(
@@ -378,7 +432,9 @@ if __name__=="__main__":
             g_optim=g_optim,
             g_steps_per_batch=g_steps_per_batch,
             n_iteration=n_iteration,
+            save_freq=save_freq,
             save_path=save_path_drug,
+            drug_name=drug_name,
             pbar_desc=f"[{drug_name}]"
         )
 
