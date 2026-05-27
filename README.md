@@ -50,15 +50,14 @@ python train.py --d 5 --n 1000 --measure normal --transform CDF --act relu
 ### Reproduce real data (4i dataset) experiment
 
 1) Download the 4i dataset from https://doi.org/10.3929/ethz-b-000609681
-2) Change into the subfolder realdata_code 
-3) Run train.py with the chosen activation and explicit seed. For server-style one-drug jobs, use `realdata_train_bunch.py`; for launching multiple jobs, use `run_all_realdata_drugs.sh`.
+2) From the repository code root, run the real-data interface scripts. Put data under `4i/` by default, or pass `--data-path` and `--feature-file`.
+3) For server-style one-drug jobs, use `realdata_train_bunch.py`; for launching multiple jobs, use `run_all_realdata_drugs.sh`.
 
 - `--act`: The activation function of ICNN, which can be one of `"relu"`, `"leaky_relu"`, or `"softplus"`.
 - `--seed`: Base random seed. The default is `20260527`; command-line values override it.
 
 **Example**
 ```
-cd realdata_code
-python train.py --act softplus --seed 20260527
 python realdata_train_bunch.py --drug crizotinib --act softplus_scaled_4 --seed 20260527
+bash run_all_realdata_drugs.sh
 ```
