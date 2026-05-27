@@ -8,12 +8,14 @@ import numpy as np
 from scipy import stats
 from scipy.optimize import linear_sum_assignment
 
+BASE_SEED = 20260527
+
 def sign_square(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x)
     return np.where(x > 0, x**2, -x**2)
 
 def sample_X(sample_size: int, measure_P: str, df: float, input_size: int, rng=None) -> np.ndarray:
-    rng = rng or np.random.default_rng()
+    rng = rng or np.random.default_rng(BASE_SEED)
     if measure_P == "normal":
         return rng.standard_normal((sample_size, input_size)).astype(np.float64)
     elif measure_P == "t":
@@ -127,7 +129,7 @@ def select_hyperparams_train_val(X_train, T_emp_train, X_val, T0X_val, nu_kernel
 
 def run_pipeline_split_and_test(sample_size=100,
                                 measure_P="normal",
-                                transform_method="linear",
+                                transform_method="piecewise_linear",
                                 input_size=3,
                                 df=5,
                                 rng=None,
@@ -139,7 +141,7 @@ def run_pipeline_split_and_test(sample_size=100,
     - Train OT + RKHS on train; select (nu_kernel, nu_ridge) on val.
     - Report RMSE on an independent test set of size test_sample_size.
     """
-    rng = rng or np.random.default_rng()
+    rng = rng or np.random.default_rng(BASE_SEED)
 
     # Step 1: generate base sample and truth
     n = sample_size
@@ -200,6 +202,7 @@ if __name__ == "__main__":
     parser.add_argument('--n',  type=int, help='training data sample size.')
     parser.add_argument('--measure',  type=str, help='measure of P, either normal or t.')
     parser.add_argument('--transform', type=str, help='OT map, CDF, piecewise_linear or quadratic.')
+    parser.add_argument('--seed-base', type=int, default=BASE_SEED, help='base seed; trial_i uses seed_base + i.')
     args, unknown = parser.parse_known_args()
 
     # ---- Config ----
@@ -230,7 +233,7 @@ if __name__ == "__main__":
     # Run 100 trials
     rmse_list = []
     for trial in range(TRIALS):
-        rng = np.random.default_rng(trial)
+        rng = np.random.default_rng(args.seed_base + trial)
         res = run_pipeline_split_and_test(
             sample_size=n,
             measure_P=measure,

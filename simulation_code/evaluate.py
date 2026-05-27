@@ -3,13 +3,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Yizhe Ding
 
-import os, re, csv, math
+import os, re, csv, math, random
 import numpy as np
 import torch
 import torch.nn as nn
 from scipy.stats import norm, t as t_dist
 
 from network import ICNN, clip_parameters, compute_gradients
+
+BASE_SEED = 20260527
+
+
+def set_eval_seed(seed: int = BASE_SEED):
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 # ----------------------------
 # Your model & helpers
@@ -44,7 +55,8 @@ def l2_evaluate(model, x_P_l2: torch.Tensor, label_P_l2: np.ndarray, device) -> 
     lab  = np.asarray(label_P_l2, dtype=float)
     return float(np.mean((lab - grad) ** 2) ** 0.5)
 
-def L2_loss(model, transform_method: str, measure_P: str, input_size: int, device) -> float:
+def L2_loss(model, transform_method: str, measure_P: str, input_size: int, device, seed: int = BASE_SEED) -> float:
+    set_eval_seed(seed)
     df = 6
     t_distribution = torch.distributions.StudentT(df)
 
@@ -96,7 +108,7 @@ def L2_loss(model, transform_method: str, measure_P: str, input_size: int, devic
 SCENARIO_RE = re.compile(r'^(?P<measure>normal|t)_(?P<transform>CDF|piecewise_linear|quadratic)_n_(?P<n>\d+)$')
 DIN_RE      = re.compile(r'^d=(?P<d>\d+)$')
 
-def eval_folder(scenario_dir: str, input_size: int, hidden_size: int, device: str, act: str = "relu"):
+def eval_folder(scenario_dir: str, input_size: int, hidden_size: int, device: str, act: str = "relu", seed: int = BASE_SEED):
     """
     Evaluate all model_*.pth in `scenario_dir`, write one CSV inside it.
     CSV columns: model_idx, L2_loss, input_size, measure_P, transform_method, n, k
@@ -139,7 +151,7 @@ def eval_folder(scenario_dir: str, input_size: int, hidden_size: int, device: st
             path = os.path.join(scenario_dir, fname)
             try:
                 model = load_model(input_size, hidden_size, act, path, use_device)
-                loss  = L2_loss(model, transform, measure, input_size, use_device)
+                loss  = L2_loss(model, transform, measure, input_size, use_device, seed=seed)
             except Exception as e:
                 print(f"[error] {path}: {e}")
                 loss = math.nan
@@ -147,7 +159,7 @@ def eval_folder(scenario_dir: str, input_size: int, hidden_size: int, device: st
 
     print(f"[done] {scenario_dir} → {os.path.relpath(out_csv)}")
 
-def eval_tree(root_dir: str, hidden_size: int = 15, device: str = "cpu", act: str = "relu"):
+def eval_tree(root_dir: str, hidden_size: int = 15, device: str = "cpu", act: str = "relu", seed: int = BASE_SEED):
     """
     Walk a tree like:
       root_dir/
@@ -173,7 +185,7 @@ def eval_tree(root_dir: str, hidden_size: int = 15, device: str = "cpu", act: st
 
         base = os.path.basename(dirpath)
         if SCENARIO_RE.match(base):
-            eval_folder(dirpath, d_in, hidden_size, device, act)
+            eval_folder(dirpath, d_in, hidden_size, device, act, seed=seed)
 
 # ----------------------------
 # Example CLI usage
@@ -185,6 +197,7 @@ if __name__ == "__main__":
     ap.add_argument("--hidden", type=int, default=15, help="Hidden size used by the ICNN (default: 64)")
     ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"], help="Evaluation device (default: cpu)")
     ap.add_argument("--act", help="activation function")
+    ap.add_argument("--seed", type=int, default=BASE_SEED, help="seed for L2 test sample generation.")
     args = ap.parse_args()
 
-    eval_tree(args.root, act=args.act)
+    eval_tree(args.root, hidden_size=args.hidden, device=args.device, act=args.act, seed=args.seed)
