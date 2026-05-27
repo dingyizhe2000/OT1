@@ -31,20 +31,22 @@ Train models with different configurations for simulations and real data.
 
 ### Reproducing the Simulation Experiments
 
-1) Change into the simulation folder:
-2)	Run train.py with the following configuration:
+From the repository code root, use `train_bunch.py` as the batch simulation entry point. It writes trained models and metadata under `simulation_results/{activation}/d={d}/{measure}_{transform}_n_{n}/`.
+
+For a single scenario, you can still run `simulation_code/train.py` directly.
 
 - `--d`: The dimensionality of the training data.
 - `--n`: The sample size of the training data.
 - `--measure`: The type of probability measure `P`, which can be either `"normal"` or `"t"` (with 6 degrees of freedom as defacult).
 - `--transform`: The type of OT map. This should be one of `"CDF"`, `"piecewise_linear"`, or `"quadratic"`.
 - `--act`: The activation function of ICNN, which can be one of `"relu"`, `"leaky_relu"`, or `"softplus"`.
+- `--seed-base`: Base random seed. The default is `20260527`; model `i` uses `seed_base + i`.
 
 **Example**
 
 ```
-cd simulation_code
-python train.py --d 5 --n 1000 --measure normal --transform CDF --act relu
+python train_bunch.py --activations softplus --dimensions 5 10 --sample-sizes 100 300 500 1000 --workers 32
+python simulation_code/train.py --d 5 --n 1000 --measure normal --transform CDF --act relu
 ```
 
 ### Reproduce real data (4i dataset) experiment

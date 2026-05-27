@@ -5,8 +5,14 @@
 import argparse
 import itertools
 import os
+import sys
 import time
 from multiprocessing import Pool
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+SIMULATION_CODE_DIR = os.path.join(ROOT_DIR, "simulation_code")
+if SIMULATION_CODE_DIR not in sys.path:
+    sys.path.insert(0, SIMULATION_CODE_DIR)
 
 from evaluate import eval_tree
 from train import BASE_SEED, train_model
@@ -22,7 +28,13 @@ def train_each_model(d, n, measure, transform, activation, model_idx, seed_base)
     df = 6
     device = "cpu"
 
-    path = f"../simulation_results/{activation}/d={input_size}/{measure}_{transform}_n_{n}/"
+    path = os.path.join(
+        ROOT_DIR,
+        "simulation_results",
+        activation,
+        f"d={input_size}",
+        f"{measure}_{transform}_n_{n}",
+    ) + os.sep
     os.makedirs(path, exist_ok=True)
 
     model_path = f"{path}model_{model_idx}.pth"
@@ -56,8 +68,8 @@ def worker(hp):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Batch simulation training entry point.")
-    parser.add_argument("--dimensions", type=int, nargs="+", default=[10])
-    parser.add_argument("--sample-sizes", type=int, nargs="+", default=[100, 300, 500])
+    parser.add_argument("--dimensions", type=int, nargs="+", default=[5, 10])
+    parser.add_argument("--sample-sizes", type=int, nargs="+", default=[100, 300, 500, 1000])
     parser.add_argument("--measures", nargs="+", default=["t", "normal"], choices=["normal", "t"])
     parser.add_argument(
         "--transforms",
@@ -111,4 +123,8 @@ if __name__ == "__main__":
 
     if args.eval:
         for activation in args.activations:
-            eval_tree(f"../simulation_results/{activation}/", act=activation, seed=args.seed_base)
+            eval_tree(
+                os.path.join(ROOT_DIR, "simulation_results", activation),
+                act=activation,
+                seed=args.seed_base,
+            )
