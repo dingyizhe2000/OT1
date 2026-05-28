@@ -1,0 +1,6 @@
+model_idx,L2_loss,epsilon,evaluation_formula
+0,0.6273087030643502,0.6812920690579612,out_of_sample_target_dual_log_scaling
+1,0.6432289620586922,0.6812920690579612,out_of_sample_target_dual_log_scaling
+2,0.6644381677321952,0.6812920690579612,out_of_sample_target_dual_log_scaling
+3,0.6675865458713481,0.6812920690579612,out_of_sample_target_dual_log_scaling
+4,0.6304802768946717,0.6812920690579612,out_of_sample_target_dual_log_scaling
