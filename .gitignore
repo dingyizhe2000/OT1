@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Entropic OT outputs are local artifacts; do not push simulation results to GitHub.
+simulation_results/entropic_ot/
