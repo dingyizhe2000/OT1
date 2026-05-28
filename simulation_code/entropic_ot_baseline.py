@@ -496,8 +496,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if args.n_jobs > 5:
-        raise ValueError("Local pilot is capped at 5 workers. Use --n-jobs 5 or lower.")
+    if args.n_jobs > 9:
+        raise ValueError("Local pilot is capped at 9 workers. Use --n-jobs 9 or lower.")
 
     model_indices = list(range(args.model_start, args.model_end))
     all_rows = []
